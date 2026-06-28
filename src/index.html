@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="zh" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://cdn.jsdelivr.net; img-src 'self' data:;">
+  <title>DeepAgent</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css" id="hljs-theme">
+  <link rel="stylesheet" href="styles/app.css">
+  <link rel="stylesheet" href="../node_modules/@xterm/xterm/css/xterm.css">
+</head>
+<body>
+  <div id="app" class="theme-dark">
+    <aside id="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <span class="logo-icon">🐋</span>
+          <span class="logo-text">DeepSeek</span>
+        </div>
+        <button id="new-chat-btn" class="btn-new-chat">
+          <span class="icon">+</span>
+          <span data-i18n="sidebar.new_chat">新建对话</span>
+        </button>
+      </div>
+
+      <div id="sidebar-tabs" class="sidebar-tabs">
+        <button class="sidebar-tab active" data-tab="chats"><span data-i18n="sidebar.chats_tab">💬 对话</span></button>
+        <button class="sidebar-tab" data-tab="files"><span data-i18n="sidebar.files_tab">📁 文件</span></button>
+      </div>
+
+      <div id="chat-list" class="sidebar-panel active">
+        <div class="chat-search-box">
+          <input type="text" id="chat-search" class="chat-search-input" placeholder="搜索对话..." data-i18n-placeholder="sidebar.search">
+        </div>
+        <div class="chat-tag-filter" id="chat-tag-filter">
+          <button class="tag-btn active" data-tag="">全部</button>
+          <button class="tag-btn" data-tag="工作">💼 工作</button>
+          <button class="tag-btn" data-tag="学习">📚 学习</button>
+          <button class="tag-btn" data-tag="调试">🔧 调试</button>
+          <button class="tag-btn" data-tag="通用">📋 通用</button>
+        </div>
+        <div id="chat-list-items"></div>
+      </div>
+
+      <div id="file-tree" class="sidebar-panel">
+        <div class="file-tree-header">
+          <select id="ft-drive-select" class="ft-drive-select" data-i18n-title="filetree.select_drive"></select>
+          <button id="ft-refresh" class="ft-btn" data-i18n-title="filetree.refresh">🔄</button>
+        </div>
+        <div id="ft-tree-container" class="ft-tree-container">
+          <div class="ft-loading" data-i18n="filetree.loading">加载中...</div>
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        <button id="export-btn" class="sidebar-footer-btn" title="导出对话" data-i18n-title="sidebar.export">
+          <span class="icon">📥</span>
+          <span data-i18n="sidebar.export">导出</span>
+        </button>
+        <button id="share-btn" class="sidebar-footer-btn" title="分享对话">
+          <span class="icon">🔗</span>
+          <span>分享</span>
+        </button>
+        <button id="settings-btn" class="sidebar-footer-btn" data-i18n-title="sidebar.settings">
+          <span class="icon">⚙</span>
+          <span data-i18n="sidebar.settings">设置</span>
+        </button>
+      </div>
+    </aside>
+
+    <main id="main-content">
+      <header id="main-header">
+        <div class="header-left">
+          <span id="current-chat-title" class="chat-title" data-i18n="chat.new_conversation">新对话</span>
+        </div>
+        <div class="header-right">
+          <div class="main-tabs">
+            <button class="main-tab active" data-view="chat"><span data-i18n="main.chat_tab">💬 对话</span></button>
+          </div>
+          <select id="model-select" class="model-select" data-i18n-title="main.select_model">
+            <option value="deepseek-chat" selected>DeepSeek V3</option>
+            <option value="deepseek-v4-flash">DeepSeek V4 Flash</option>
+            <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
+            <option value="deepseek-reasoner">DeepSeek R1</option>
+          </select>
+          <button id="theme-toggle" class="icon-btn" data-i18n-title="theme.toggle">🌙</button>
+        </div>
+      </header>
+
+      <div id="view-chat" class="main-view active">
+        <div id="messages-container">
+          <div id="messages">
+            <div class="welcome-screen">
+              <div class="welcome-logo">🐋</div>
+              <h1 class="welcome-title" data-i18n="chat.welcome_title">欢迎使用 DeepAgent</h1>
+              <p class="welcome-subtitle" data-i18n="chat.welcome_desc">强大的 AI 助手，可以读写文件、执行命令、搜索代码、访问网络。</p>
+              <div class="welcome-suggestions">
+                <div class="suggestion-chip" data-i18n="chat.suggestion_list" data-prompt="列出当前目录下的所有文件">列出当前目录的文件</div>
+                <div class="suggestion-chip" data-i18n="chat.suggestion_sysinfo" data-prompt="用 PowerShell 查看系统信息">查看系统信息</div>
+              </div>
+            </div>
+          </div>
+          <div id="scroll-anchor"></div>
+        </div>
+
+        <div id="input-area">
+          <div id="input-wrapper" class="drop-zone">
+            <div id="drop-overlay" class="drop-overlay hidden" data-i18n="chat.drop_hint">📄 拖放文件到此处</div>
+            <textarea id="message-input" placeholder="输入消息..." rows="1" autofocus></textarea>
+            <button id="mic-btn" class="btn-mic" title="语音输入">🎤</button>
+            <button id="upload-btn" class="btn-upload" data-i18n-title="chat.upload">📎</button>
+            <input type="file" id="file-input" class="file-input-hidden" multiple>
+            <button id="stop-btn" class="btn-stop hidden">■</button>
+            <button id="send-btn" class="btn-send">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </div>
+          <p class="input-disclaimer" data-i18n="chat.disclaimer">DeepSeek 可能会生成不准确的信息，请核实重要事实。</p>
+        </div>
+      </div>
+
+      <!-- 终端面板（合并到聊天视图底部） -->
+      <div id="term-panel" class="term-panel hidden">
+        <div class="term-panel-header">
+          <span class="term-panel-title">💻 终端输出</span>
+          <button id="term-panel-clear" class="term-btn-small">清空</button>
+        </div>
+        <div class="term-panel-output" id="term-panel-output"></div>
+        <div class="term-panel-input-line">
+          <span class="term-prompt">❯</span>
+          <input type="text" class="term-panel-input" id="term-panel-input" placeholder="手动输入命令..." spellcheck="false">
+        </div>
+      </div>
+
+      <div id="view-settings" class="main-view">
+        <div class="settings-page">
+          <div class="settings-page-header">
+            <h2 data-i18n="settings.title">⚙️ 设置</h2>
+            <button id="settings-back" class="icon-btn" data-i18n="settings.back">← 返回</button>
+          </div>
+          <div class="settings-page-body">
+            <div class="settings-search-box">
+              <input type="text" id="settings-search" class="form-input settings-search-input" placeholder="搜索设置项...">
+            </div>
+            <!-- System Prompt -->
+            <div class="form-group">
+              <label for="sys-prompt">默认 System Prompt</label>
+              <textarea id="sys-prompt" class="form-input form-textarea" rows="4" placeholder="每次对话开始时注入的系统指令，例如：你是一个编程助手"></textarea>
+              <p class="form-hint">设置后每次新建对话都会自动注入此指令。留空则不使用。</p>
+            </div>
+            <div class="form-divider"></div>
+
+            <!-- 搜索 API 配置 -->
+            <div class="form-group">
+              <label for="search-provider">搜索服务商</label>
+              <select id="search-provider" class="form-input">
+                <option value="html">HTML 解析（免费，不稳定）</option>
+                <option value="serpapi">SerpAPI</option>
+                <option value="bing">Bing Search API</option>
+              </select>
+            </div>
+            <div class="form-group" id="search-key-group">
+              <label for="search-api-key">搜索 API 密钥</label>
+              <input type="password" id="search-api-key" class="form-input" placeholder="留空则使用 HTML 解析">
+            </div>
+            <div class="form-divider"></div>
+
+            <div class="form-group">
+              <label for="api-provider" data-i18n="settings.provider">AI 服务商</label>
+              <select id="api-provider" class="form-input">
+                <option value="deepseek" data-i18n="settings.provider_deepseek">DeepSeek（深度求索）</option>
+                <option value="openai" data-i18n="settings.provider_openai">OpenAI</option>
+                <option value="qwen" data-i18n="settings.provider_qwen">通义千问（阿里云）</option>
+                <option value="zhipu" data-i18n="settings.provider_zhipu">智谱清言</option>
+                <option value="moonshot" data-i18n="settings.provider_moonshot">月之暗面</option>
+                <option value="grok" data-i18n="settings.provider_grok">xAI Grok</option>
+                <option value="groq" data-i18n="settings.provider_groq">Groq（免费）</option>
+                <option value="anthropic" data-i18n="settings.provider_anthropic">Anthropic Claude</option>
+                <option value="custom" data-i18n="settings.provider_custom">自定义</option>
+              </select>
+              <p class="form-hint" id="provider-hint"></p>
+            </div>
+            <div class="form-group" id="endpoint-group" style="display:none">
+              <label for="api-endpoint" data-i18n="settings.endpoint">API 端点地址</label>
+              <input type="text" id="api-endpoint" class="form-input">
+            </div>
+            <div class="form-group">
+              <label for="api-key-input" data-i18n="settings.api_key">API 密钥</label>
+              <input type="password" id="api-key-input" class="form-input" data-i18n-placeholder="settings.api_key_placeholder">
+              <p class="form-hint" data-i18n="settings.api_key_hint">密钥仅本地保存，仅用于调用对应 API</p>
+              <div id="provider-links" class="provider-links">
+                <a href="https://platform.deepseek.com" target="_blank" class="provider-link" data-provider="deepseek">🔗 DeepSeek</a>
+                <a href="https://platform.openai.com/api-keys" target="_blank" class="provider-link" data-provider="openai" style="display:none">🔗 OpenAI</a>
+                <a href="https://bailian.console.aliyun.com/" target="_blank" class="provider-link" data-provider="qwen" style="display:none">🔗 阿里云百炼</a>
+                <a href="https://open.bigmodel.cn/usercenter/apikeys" target="_blank" class="provider-link" data-provider="zhipu" style="display:none">🔗 智谱AI</a>
+                <a href="https://platform.moonshot.cn/console/api-keys" target="_blank" class="provider-link" data-provider="moonshot" style="display:none">🔗 月之暗面</a>
+                <a href="https://x.ai/api" target="_blank" class="provider-link" data-provider="grok" style="display:none">🔗 xAI</a>
+                <a href="https://console.groq.com/keys" target="_blank" class="provider-link" data-provider="groq" style="display:none">🔗 Groq</a>
+                <a href="https://console.anthropic.com/" target="_blank" class="provider-link" data-provider="anthropic" style="display:none">🔗 Anthropic</a>
+                <span class="provider-link" data-provider="custom" style="display:none" data-i18n="settings.provider_custom">自定义端点</span>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="model-select-settings" data-i18n="settings.model">默认模型</label>
+              <select id="model-select-settings" class="form-input"></select>
+            </div>
+            <div class="form-group">
+              <label for="theme-select" data-i18n="settings.theme">主题</label>
+              <select id="theme-select" class="form-input">
+                <option value="dark" data-i18n="settings.dark">深色</option>
+                <option value="light" data-i18n="settings.light">浅色</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="lang-select" data-i18n="settings.language">界面语言</label>
+              <select id="lang-select" class="form-input">
+                <option value="zh">中文</option>
+                <option value="en">English</option>
+                <option value="ja">日本語</option>
+                <option value="ko">한국어</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="density-select">界面密度</label>
+              <select id="density-select" class="form-input">
+                <option value="normal">标准</option>
+                <option value="compact">紧凑</option>
+              </select>
+            </div>
+            <div class="form-divider"></div>
+            <div class="form-group">
+              <label>系统依赖</label>
+              <div id="dep-check-result" class="dep-list"></div>
+              <button id="dep-check-btn" class="btn-primary" style="margin-top:8px">检测缺失依赖</button>
+            </div>
+          </div>
+          <div class="settings-page-footer">
+            <p id="settings-status" class="settings-status"></p>
+            <button id="save-settings" class="btn-primary" data-i18n="settings.save">保存设置</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="view-terminal" class="main-view">
+        <div id="terminal-container"></div>
+        <div class="terminal-statusbar">
+          <span id="terminal-status" data-i18n="terminal.ready">终端已就绪</span>
+          <button id="terminal-restart-btn" class="terminal-btn" data-i18n="terminal.restart">重启</button>
+        </div>
+      </div>
+
+      <div id="view-code" class="main-view">
+        <div id="code-header" class="code-viewer-header">
+          <span id="code-path" class="code-path" data-i18n="codeview.select_hint">选择文件查看</span>
+          <div class="code-header-actions">
+            <button id="code-edit-btn" class="code-action-btn" data-i18n="codeview.edit">编辑</button>
+            <button id="code-save-btn" class="code-action-btn" style="display:none" data-i18n="codeview.save">保存</button>
+            <button id="code-close" class="icon-btn" data-i18n-title="codeview.close">✕</button>
+          </div>
+        </div>
+        <pre id="code-content" class="code-viewer-content" contenteditable="false"><code class="hljs"></code></pre>
+      </div>
+    </main>
+  </div>
+
+  <div id="perm-overlay" class="perm-overlay hidden">
+    <div class="perm-dialog">
+      <div class="perm-header">
+        <span class="perm-icon">🛡️</span>
+        <span class="perm-title" data-i18n="perm.title">权限请求</span>
+      </div>
+      <div class="perm-body">
+        <p class="perm-tool-label" data-i18n="perm.label">AI 想执行以下操作：</p>
+        <div class="perm-tool-name" id="perm-tool-name"></div>
+        <pre class="perm-args" id="perm-args"></pre>
+        <p class="perm-hint" data-i18n="perm.hint">拒绝后 AI 会尝试其他方案。</p>
+      </div>
+      <div class="perm-actions">
+        <button id="perm-deny" class="btn-secondary" data-i18n="perm.deny">拒绝</button>
+        <button id="perm-allow" class="btn-primary" data-i18n="perm.allow">允许</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="i18n.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.1/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/highlight.min.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>

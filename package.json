@@ -15,26 +15,22 @@
   "build": {
     "appId": "com.deepagent.app",
     "productName": "DeepAgent",
-    "directories": {
-      "output": "release"
-    },
+    "directories": { "output": "dist" },
     "files": [
-      "main.js",
-      "preload.js",
-      "package.json",
-      "src/**/*",
-      "dev-app-update.yml"
+      "main.js", "preload.js", "package.json",
+      "src/**/*", "dev-app-update.yml"
     ],
+    "asar": true,
     "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": ["x64"]
-        }
-      ],
-      "icon": "build/icon.png",
-      "certificateSubjectName": "",
-      "sign": false
+      "target": ["nsis", "portable"],
+      "artifactName": "${productName}-${version}-setup.${ext}"
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "category": "public.app-category.developer-tools",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
     },
     "nsis": {
       "oneClick": false,
@@ -42,21 +38,18 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "DeepAgent",
-      "uninstallDisplayName": "DeepAgent"
+      "deleteAppDataOnUninstall": false
     },
-    "publish": {
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.exe"
+    },
+    "publish": [{
       "provider": "github",
       "owner": "zxkopen123",
-      "repo": "deepagent",
-      "releaseType": "release"
-    },
+      "repo": "deepagent"
+    }],
     "extraResources": [
-      {
-        "from": "node_modules/ffmpeg-static",
-        "to": "ffmpeg-static",
-        "filter": ["**/*"]
-      }
+      { "from": "node_modules/ffmpeg-static", "to": "ffmpeg-static", "filter": ["**/*"] }
     ]
   },
   "devDependencies": {

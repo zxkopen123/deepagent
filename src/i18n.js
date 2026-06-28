@@ -15,8 +15,10 @@ const translations = {
 
     // ── 侧边栏 ──
     'sidebar.new_chat': '新建对话',
-    'sidebar.chats_tab': '💬 对话',
-    'sidebar.files_tab': '📁 文件',
+    'sidebar.chats_tab': '对话',
+    'sidebar.search_tab': '搜索',
+    'sidebar.bookmarks_tab': '收藏',
+    'sidebar.files_tab': '文件',
     'sidebar.settings': '设置',
     'sidebar.no_chats': '暂无对话',
     'sidebar.search': '搜索对话...',
@@ -50,6 +52,7 @@ const translations = {
     'chat.recording': '录音中...',
     'chat.mic_error': '请授予麦克风权限',
     'chat.whisper_error': '语音识别失败，请检查 openai-whisper 是否安装',
+    'chat.truncated_hint': '回复因长度限制被截断，可以输入"继续"让我接着说完',
 
     // ── 终端 ──
     'terminal.ready': '终端已就绪',
@@ -82,6 +85,8 @@ const translations = {
     'settings.dark': '深色',
     'settings.light': '浅色',
     'settings.language': '语言',
+    'theme.custom': '自定义主题',
+    'theme.reset': '恢复默认',
     'settings.saved': '✅ 设置已保存',
     'settings.save': '保存设置',
     'settings.back': '← 返回',
@@ -158,6 +163,76 @@ const translations = {
     'update.install_btn': '安装并重启',
     'update.later_btn': '稍后再说',
     'update.close_btn': '关闭',
+
+    // ── MCP ──
+    'mcp.label': 'MCP 工具',
+    'mcp.hint': '加载外部工具扩展 AI 能力',
+    'mcp.loading': '加载中...',
+    'mcp.reload': '重新加载',
+    'mcp.path': '配置文件: ~/.deepagent/mcp.json',
+    'mcp.builtin_hint': '一键启用内置工具，无需编写代码',
+    'mcp.webhook': 'Webhook 推送',
+    'mcp.clipboard': '剪贴板工具',
+    'mcp.notification': '桌面通知',
+
+    // ── Voice ──
+    'voice.tip': '点击并按住说话',
+    'voice.listening': '聆听中...',
+    'voice.thinking': '思考中...',
+    'voice.speaking': '回复中...',
+    'voice.error_mic': '无法访问麦克风',
+
+    // ── Sync ──
+    'sync.label': '云同步',
+    'sync.hint': '通过 GitHub Gist 同步对话和配置（API Key 不会上传）',
+    'sync.token': 'GitHub Personal Access Token',
+    'sync.upload': '上传到云端',
+    'sync.download': '从云端下载',
+    'sync.enable': '启用自动同步',
+    'sync.last_sync': '上次同步：',
+    'sync.success': '同步成功',
+    'sync.error': '同步失败：',
+    'sync.never': '从未同步',
+
+    // ── Workspace ──
+    'workspace.label': '工作区',
+    'workspace.hint': '管理工作目录，快速切换项目环境',
+    'workspace.add': '添加',
+    'workspace.remove': '删除',
+
+    // ── Knowledge ──
+    'knowledge.label': '知识库',
+    'knowledge.hint': '上传文档后 AI 可在回复时检索',
+    'knowledge.drop': '拖拽文件到此处或点击选择（txt/md/pdf/docx）',
+    'knowledge.search': '搜索知识库内容...',
+
+    // ── Playback ──
+    'playback.label': '回放',
+    'playback.play': '播放',
+    'playback.pause': '暂停',
+    'playback.exit': '退出回放',
+
+    // ── Code Review ──
+    'codereview.label': '代码审查',
+    'codereview.start': '开始审查',
+    'codereview.running': '审查中...',
+    'codereview.result': '审查结果',
+    'codereview.empty': '无代码变更',
+    'codereview.error': '审查失败：',
+
+    // ── Prompt Presets ──
+    'prompt.presets': 'Prompt 预设',
+    'prompt.new': '新建预设',
+    'prompt.name': '预设名称',
+    'prompt.content': '预设内容',
+    'prompt.save': '保存',
+    'prompt.delete': '删除',
+    'prompt.apply': '应用',
+    'prompt.empty': '暂无预设',
+
+    // ── Context ──
+    'context.inherit': '继承上下文',
+    'context.inherit_hint': '从当前对话继承最后一段上下文到新对话',
   },
 
   en: {
@@ -167,8 +242,10 @@ const translations = {
 
     // ── Sidebar ──
     'sidebar.new_chat': 'New Chat',
-    'sidebar.chats_tab': '💬 Chats',
-    'sidebar.files_tab': '📁 Files',
+    'sidebar.chats_tab': 'Chats',
+    'sidebar.search_tab': 'Search',
+    'sidebar.bookmarks_tab': 'Bookmarks',
+    'sidebar.files_tab': 'Files',
     'sidebar.settings': 'Settings',
     'sidebar.no_chats': 'No conversations yet',
     'sidebar.search': 'Search conversations...',
@@ -200,6 +277,7 @@ const translations = {
     'chat.recording': 'Recording...',
     'chat.mic_error': 'Please grant microphone permission',
     'chat.whisper_error': 'Speech recognition failed. Please check openai-whisper installation',
+    'chat.truncated_hint': 'Reply was truncated due to length limit. Type "continue" to let me finish.',
     'chat.suggestion_list': 'List files in current directory',
     'chat.suggestion_sysinfo': 'Check system information',
 
@@ -234,6 +312,8 @@ const translations = {
     'settings.dark': 'Dark',
     'settings.light': 'Light',
     'settings.language': 'Language',
+    'theme.custom': 'Custom Theme',
+    'theme.reset': 'Reset',
     'settings.saved': '✅ Settings saved',
     'settings.save': 'Save Settings',
     'settings.back': '← Back',
@@ -310,6 +390,76 @@ const translations = {
     'update.install_btn': 'Install & Restart',
     'update.later_btn': 'Later',
     'update.close_btn': 'Close',
+
+    // ── MCP ──
+    'mcp.label': 'MCP Tools',
+    'mcp.hint': 'Load external tools to extend AI capabilities',
+    'mcp.loading': 'Loading...',
+    'mcp.reload': 'Reload',
+    'mcp.path': 'Config: ~/.deepagent/mcp.json',
+    'mcp.builtin_hint': 'One-click enable built-in tools, no coding needed',
+    'mcp.webhook': 'Webhook Push',
+    'mcp.clipboard': 'Clipboard Tool',
+    'mcp.notification': 'Desktop Notification',
+
+    // ── Voice ──
+    'voice.tip': 'Press and hold to speak',
+    'voice.listening': 'Listening...',
+    'voice.thinking': 'Thinking...',
+    'voice.speaking': 'Speaking...',
+    'voice.error_mic': 'Cannot access microphone',
+
+    // ── Sync ──
+    'sync.label': 'Cloud Sync',
+    'sync.hint': 'Sync chats and config via GitHub Gist (API keys are never uploaded)',
+    'sync.token': 'GitHub Personal Access Token',
+    'sync.upload': 'Upload to Cloud',
+    'sync.download': 'Download from Cloud',
+    'sync.enable': 'Enable auto sync',
+    'sync.last_sync': 'Last sync: ',
+    'sync.success': 'Sync successful',
+    'sync.error': 'Sync failed: ',
+    'sync.never': 'Never synced',
+
+    // ── Workspace ──
+    'workspace.label': 'Workspace',
+    'workspace.hint': 'Manage working directories, quickly switch projects',
+    'workspace.add': 'Add',
+    'workspace.remove': 'Remove',
+
+    // ── Knowledge ──
+    'knowledge.label': 'Knowledge Base',
+    'knowledge.hint': 'Upload documents for AI to search when answering',
+    'knowledge.drop': 'Drop files or click to select (txt/md/pdf/docx)',
+    'knowledge.search': 'Search knowledge base...',
+
+    // ── Playback ──
+    'playback.label': 'Playback',
+    'playback.play': 'Play',
+    'playback.pause': 'Pause',
+    'playback.exit': 'Exit',
+
+    // ── Code Review ──
+    'codereview.label': 'Code Review',
+    'codereview.start': 'Start Review',
+    'codereview.running': 'Reviewing...',
+    'codereview.result': 'Review Result',
+    'codereview.empty': 'No code changes',
+    'codereview.error': 'Review failed: ',
+
+    // ── Prompt Presets ──
+    'prompt.presets': 'Prompt Presets',
+    'prompt.new': 'New Preset',
+    'prompt.name': 'Preset Name',
+    'prompt.content': 'Preset Content',
+    'prompt.save': 'Save',
+    'prompt.delete': 'Delete',
+    'prompt.apply': 'Apply',
+    'prompt.empty': 'No presets yet',
+
+    // ── Context ──
+    'context.inherit': 'Inherit Context',
+    'context.inherit_hint': 'Inherit last context from current chat to new chat',
   },
 
   ja: {

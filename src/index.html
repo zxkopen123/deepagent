@@ -16,7 +16,7 @@
       <div class="sidebar-header">
         <div class="logo">
           <span class="logo-icon">🐋</span>
-          <span class="logo-text">DeepSeek</span>
+          <span class="logo-text">DeepAgent</span>
         </div>
         <button id="new-chat-btn" class="btn-new-chat">
           <span class="icon">+</span>
@@ -25,22 +25,34 @@
       </div>
 
       <div id="sidebar-tabs" class="sidebar-tabs">
-        <button class="sidebar-tab active" data-tab="chats"><span data-i18n="sidebar.chats_tab">💬 对话</span></button>
-        <button class="sidebar-tab" data-tab="files"><span data-i18n="sidebar.files_tab">📁 文件</span></button>
+        <button class="sidebar-tab active" data-tab="chats" data-i18n="sidebar.chats_tab">💬 对话</button>
+        <button class="sidebar-tab" data-tab="search" data-i18n="sidebar.search_tab">🔍 搜索</button>
+        <button class="sidebar-tab" data-tab="bookmarks" data-i18n="sidebar.bookmarks_tab">⭐ 收藏</button>
+        <button class="sidebar-tab" data-tab="files" data-i18n="sidebar.files_tab">📁 文件</button>
       </div>
 
       <div id="chat-list" class="sidebar-panel active">
-        <div class="chat-search-box">
-          <input type="text" id="chat-search" class="chat-search-input" placeholder="搜索对话..." data-i18n-placeholder="sidebar.search">
-        </div>
         <div class="chat-tag-filter" id="chat-tag-filter">
           <button class="tag-btn active" data-tag="">全部</button>
-          <button class="tag-btn" data-tag="工作">💼 工作</button>
-          <button class="tag-btn" data-tag="学习">📚 学习</button>
-          <button class="tag-btn" data-tag="调试">🔧 调试</button>
-          <button class="tag-btn" data-tag="通用">📋 通用</button>
+          <button class="tag-btn" data-tag="工作">💼</button>
+          <button class="tag-btn" data-tag="学习">📚</button>
+          <button class="tag-btn" data-tag="调试">🔧</button>
+          <button class="tag-btn" data-tag="通用">📋</button>
         </div>
         <div id="chat-list-items"></div>
+      </div>
+
+      <!-- 搜索面板 -->
+      <div id="search-panel" class="sidebar-panel">
+        <div style="padding:8px;border-bottom:1px solid var(--border-color)">
+          <input type="text" id="global-search-input" class="chat-search-input" placeholder="跨对话搜索..." style="margin-bottom:0">
+        </div>
+        <div id="global-search-results" style="flex:1;overflow-y:auto;padding:4px 8px"></div>
+      </div>
+
+      <!-- 收藏面板 -->
+      <div id="bookmarks-panel" class="sidebar-panel">
+        <div id="bookmarks-list" style="flex:1;overflow-y:auto;padding:4px 8px"></div>
       </div>
 
       <div id="file-tree" class="sidebar-panel">
@@ -54,17 +66,11 @@
       </div>
 
       <div class="sidebar-footer">
-        <button id="export-btn" class="sidebar-footer-btn" title="导出对话" data-i18n-title="sidebar.export">
-          <span class="icon">📥</span>
-          <span data-i18n="sidebar.export">导出</span>
-        </button>
-        <button id="share-btn" class="sidebar-footer-btn" title="分享对话">
-          <span class="icon">🔗</span>
-          <span>分享</span>
-        </button>
+        <span id="current-role-badge" class="current-role-badge" title="当前角色" style="display:none">🎭</span>
+        <span id="sync-dot" class="sync-dot" title="云同步状态"></span>
+        <span style="flex:1"></span>
         <button id="settings-btn" class="sidebar-footer-btn" data-i18n-title="sidebar.settings">
           <span class="icon">⚙</span>
-          <span data-i18n="sidebar.settings">设置</span>
         </button>
       </div>
     </aside>
@@ -77,6 +83,7 @@
         <div class="header-right">
           <div class="main-tabs">
             <button class="main-tab active" data-view="chat"><span data-i18n="main.chat_tab">💬 对话</span></button>
+            <button id="playback-btn" class="main-tab" title="对话回放">▶ <span data-i18n="playback.label">回放</span></button>
           </div>
           <select id="model-select" class="model-select" data-i18n-title="main.select_model">
             <option value="deepseek-chat" selected>DeepSeek V3</option>
@@ -104,13 +111,29 @@
           <div id="scroll-anchor"></div>
         </div>
 
+        <!-- 回放控制条 -->
+        <div id="playback-controls" class="playback-controls" style="display:none">
+          <button id="playback-play-btn" class="icon-btn">⏸</button>
+          <input type="range" id="playback-progress" min="0" max="100" value="0" style="flex:1">
+          <span id="playback-pos" style="font-size:12px;color:var(--text-tertiary)">0 / 0</span>
+          <select id="playback-speed" class="playback-speed">
+            <option value="0.5">0.5x</option>
+            <option value="1" selected>1x</option>
+            <option value="2">2x</option>
+            <option value="4">4x</option>
+          </select>
+          <button id="playback-exit-btn" class="icon-btn" title="退出回放">✕</button>
+        </div>
+
         <div id="input-area">
           <div id="input-wrapper" class="drop-zone">
             <div id="drop-overlay" class="drop-overlay hidden" data-i18n="chat.drop_hint">📄 拖放文件到此处</div>
             <textarea id="message-input" placeholder="输入消息..." rows="1" autofocus></textarea>
             <button id="mic-btn" class="btn-mic" title="语音输入">🎤</button>
+            <button id="voice-btn" class="btn-mic" title="实时语音对话">🎙️</button>
             <button id="upload-btn" class="btn-upload" data-i18n-title="chat.upload">📎</button>
             <input type="file" id="file-input" class="file-input-hidden" multiple>
+            <select id="chat-model-select" class="chat-model-select" title="切换模型"></select>
             <button id="stop-btn" class="btn-stop hidden">■</button>
             <button id="send-btn" class="btn-send">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -122,6 +145,7 @@
           <p class="input-disclaimer" data-i18n="chat.disclaimer">DeepSeek 可能会生成不准确的信息，请核实重要事实。</p>
         </div>
       </div>
+
 
       <!-- 终端面板（合并到聊天视图底部） -->
       <div id="term-panel" class="term-panel hidden">
@@ -150,7 +174,13 @@
             <div class="form-group">
               <label for="sys-prompt">默认 System Prompt</label>
               <textarea id="sys-prompt" class="form-input form-textarea" rows="4" placeholder="每次对话开始时注入的系统指令，例如：你是一个编程助手"></textarea>
-              <p class="form-hint">设置后每次新建对话都会自动注入此指令。留空则不使用。</p>
+              <p class="form-hint">设置后每次新建对话都会自动注入此指令。留空则不使用。 <a href="#" id="manage-presets-link" style="color:var(--accent);text-decoration:none">管理预设</a></p>
+            </div>
+            <div class="form-group">
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px">
+                <input type="checkbox" id="inherit-context-cb"> <span data-i18n="context.inherit">继承上下文</span>
+              </label>
+              <p class="form-hint" data-i18n="context.inherit_hint">从当前对话继承最后一段上下文到新对话</p>
             </div>
             <div class="form-divider"></div>
 
@@ -231,6 +261,69 @@
                 <option value="compact">紧凑</option>
               </select>
             </div>
+            <div class="form-group">
+              <label data-i18n="theme.custom">自定义主题</label>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+                <label style="font-size:12px;">主色调 <input type="color" id="theme-primary" class="theme-color-input" value="#4f8cff"></label>
+                <label style="font-size:12px;">背景色 <input type="color" id="theme-bg" class="theme-color-input" value="#121212"></label>
+                <label style="font-size:12px;">文字色 <input type="color" id="theme-text" class="theme-color-input" value="#e8e8e8"></label>
+                <label style="font-size:12px;">边框色 <input type="color" id="theme-border" class="theme-color-input" value="#333333"></label>
+              </div>
+              <button id="theme-reset-btn" class="btn-secondary" style="margin-top:6px" data-i18n="theme.reset">恢复默认</button>
+            </div>
+            <div class="form-divider"></div>
+            <div class="form-group">
+              <label data-i18n="mcp.label">MCP 工具</label>
+              <p class="form-hint" data-i18n="mcp.hint">加载外部工具扩展 AI 能力</p>
+              <div id="mcp-status-list" class="dep-list">
+                <div style="color:var(--text-tertiary);font-size:12px" data-i18n="mcp.loading">加载中...</div>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:8px">
+                <button id="mcp-reload-btn" class="btn-secondary" data-i18n="mcp.reload">重新加载</button>
+                <span style="font-size:11px;color:var(--text-tertiary);align-self:center" data-i18n="mcp.path">配置文件: ~/.deepagent/mcp.json</span>
+              </div>
+              <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-color)">
+                <div style="font-size:12px;font-weight:500;margin-bottom:6px" data-i18n="mcp.builtin_hint">一键启用内置工具</div>
+                <div class="mcp-preset"><span>📤 Webhook 推送</span><label class="switch"><input type="checkbox" class="mcp-toggle" data-plugin="webhook"><span class="slider"></span></label></div>
+                <div class="mcp-preset"><span>📋 剪贴板工具</span><label class="switch"><input type="checkbox" class="mcp-toggle" data-plugin="clipboard"><span class="slider"></span></label></div>
+                <div class="mcp-preset"><span>🔔 桌面通知</span><label class="switch"><input type="checkbox" class="mcp-toggle" data-plugin="notification"><span class="slider"></span></label></div>
+              </div>
+            </div>
+            <div class="form-divider"></div>
+            <div class="form-group">
+              <label data-i18n="sync.label">云同步</label>
+              <p class="form-hint" data-i18n="sync.hint">通过 GitHub Gist 同步对话和配置（API Key 不会上传）</p>
+              <input type="password" id="sync-token" class="form-input" data-i18n-placeholder="sync.token" placeholder="GitHub Personal Access Token" style="margin-bottom:6px">
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:8px">
+                <input type="checkbox" id="sync-enabled"> <span data-i18n="sync.enable">启用自动同步</span>
+              </label>
+              <div style="display:flex;gap:8px;margin-bottom:4px">
+                <button id="sync-upload-btn" class="btn-secondary">☁️ <span data-i18n="sync.upload">上传到云端</span></button>
+                <button id="sync-download-btn" class="btn-secondary">☁️ <span data-i18n="sync.download">从云端下载</span></button>
+              </div>
+              <span id="sync-status" style="font-size:12px;color:var(--text-tertiary)" data-i18n="sync.never">从未同步</span>
+            </div>
+            <div class="form-divider"></div>
+            <div class="form-group">
+              <label data-i18n="workspace.label">工作区</label>
+              <p class="form-hint" data-i18n="workspace.hint">管理工作目录，快速切换项目环境</p>
+              <div style="display:flex;gap:8px;margin-bottom:6px">
+                <select id="workspace-select" class="form-input" style="flex:1"></select>
+                <button id="workspace-add-btn" class="btn-secondary" data-i18n="workspace.add">添加</button>
+                <button id="workspace-remove-btn" class="btn-secondary" data-i18n="workspace.remove">删除</button>
+              </div>
+            </div>
+            <div class="form-divider"></div>
+            <div class="form-group">
+              <label data-i18n="knowledge.label">知识库</label>
+              <p class="form-hint" data-i18n="knowledge.hint">上传文档后 AI 可在回复时检索</p>
+              <div id="knowledge-drop-zone" class="knowledge-drop-zone">
+                <span data-i18n="knowledge.drop">拖拽文件到此处或点击选择（txt/md/pdf/docx）</span>
+              </div>
+              <div id="knowledge-list" class="dep-list" style="margin-top:6px"></div>
+              <input type="text" id="knowledge-search" class="form-input" data-i18n-placeholder="knowledge.search" placeholder="搜索知识库内容..." style="margin-top:6px">
+              <div id="knowledge-search-results" class="dep-list"></div>
+            </div>
             <div class="form-divider"></div>
             <div class="form-group">
               <label>系统依赖</label>
@@ -287,6 +380,14 @@
               <p class="form-hint">检查 GitHub Releases 是否有新版本</p>
               <button id="check-update-btn" class="btn-primary" style="margin-top:8px">检查更新</button>
             </div>
+            <div class="form-divider"></div>
+            <div class="form-group" style="text-align:center;padding:12px 0">
+              <div style="font-size:24px;margin-bottom:4px">🐋</div>
+              <div style="font-size:15px;font-weight:600;color:var(--text-primary)">DeepAgent</div>
+              <div style="font-size:12px;color:var(--text-tertiary);margin:2px 0 6px">v1.0.0</div>
+              <a href="https://github.com/zxkopen123/deepagent" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">GitHub 仓库 →</a>
+              <div style="font-size:11px;color:var(--text-tertiary);margin-top:6px">MIT License · 开源 AI 桌面助手</div>
+            </div>
           </div>
           <div class="settings-page-footer">
             <p id="settings-status" class="settings-status"></p>
@@ -315,6 +416,65 @@
         <pre id="code-content" class="code-viewer-content" contenteditable="false"><code class="hljs"></code></pre>
       </div>
     </main>
+  </div>
+
+  <!-- ═══ Role Presets Panel ═══ -->
+  <div id="role-overlay" class="perm-overlay hidden">
+    <div class="perm-dialog" style="width:650px;max-height:80vh;display:flex;flex-direction:column">
+      <div class="perm-header">
+        <span class="perm-icon">🎭</span>
+        <span class="perm-title">AI 角色</span>
+        <button id="role-close" class="icon-btn" style="margin-left:auto">✕</button>
+      </div>
+      <div class="perm-body" style="flex:1;overflow:hidden;display:flex;gap:12px;padding:12px 20px">
+        <div class="role-sidebar" style="width:160px;overflow-y:auto;border-right:1px solid var(--border-color);padding-right:8px">
+          <div id="role-list"></div>
+          <button id="role-add-btn" class="btn-secondary" style="width:100%;margin-top:8px;font-size:12px">+ 新建角色</button>
+        </div>
+        <div id="role-detail" class="role-detail" style="flex:1;overflow-y:auto">
+          <div style="color:var(--text-tertiary);font-size:13px;padding:20px;text-align:center">选择一个角色查看配置</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Prompt Presets Panel ═══ -->
+  <div id="presets-overlay" class="perm-overlay hidden">
+    <div class="perm-dialog" style="width:500px;max-height:70vh;display:flex;flex-direction:column">
+      <div class="perm-header">
+        <span class="perm-icon">📋</span>
+        <span class="perm-title" data-i18n="prompt.presets">Prompt 预设</span>
+        <button id="presets-close" class="icon-btn" style="margin-left:auto">✕</button>
+      </div>
+      <div class="perm-body" style="flex:1;overflow-y:auto">
+        <div id="presets-list"></div>
+        <div id="presets-new-area" style="display:none;margin-top:12px;border-top:1px solid var(--border-color);padding-top:12px">
+          <input type="text" id="preset-name-input" class="form-input" placeholder="预设名称" style="margin-bottom:6px">
+          <textarea id="preset-content-input" class="form-input form-textarea" rows="4" placeholder="预设内容"></textarea>
+          <button id="preset-save-btn" class="btn-primary" style="margin-top:6px">保存</button>
+        </div>
+        <button id="preset-new-btn" class="btn-secondary" style="margin-top:12px">+ 新建预设</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Code Review Panel ═══ -->
+  <div id="review-overlay" class="perm-overlay hidden">
+    <div class="perm-dialog" style="width:700px;max-height:85vh;display:flex;flex-direction:column">
+      <div class="perm-header">
+        <span class="perm-icon">🔍</span>
+        <span class="perm-title" data-i18n="codereview.label">代码审查</span>
+        <button id="review-close" class="icon-btn" style="margin-left:auto">✕</button>
+      </div>
+      <div class="perm-body" style="flex:1;overflow-y:auto;display:flex;flex-direction:column">
+        <div style="display:flex;gap:8px;margin-bottom:8px;flex-shrink:0">
+          <input type="text" id="review-path" class="form-input" placeholder="Git 仓库路径（可选，默认当前目录）" style="flex:1">
+          <button id="review-start-btn" class="btn-primary">🔍 开始审查</button>
+        </div>
+        <div id="review-status" style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px;flex-shrink:0"></div>
+        <div id="review-result" class="review-result" style="flex:1;overflow-y:auto;white-space:pre-wrap;font-size:13px;line-height:1.6;display:none"></div>
+      </div>
+    </div>
   </div>
 
   <!-- ═══ Update Dialog ═══ -->
@@ -368,6 +528,9 @@
   <script src="i18n.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@12.0.1/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/highlight.min.js"></script>
+  <script>window.html2canvas = null;</script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" onload="console.log('html2canvas loaded')" onerror="console.warn('html2canvas failed to load')"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js" onload="console.log('mermaid loaded')" onerror="console.warn('mermaid failed to load')"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

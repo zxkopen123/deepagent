@@ -23,6 +23,7 @@ const userDataPath = app.getPath('userData');
 const CONFIG_PATH = path.join(userDataPath, 'config.json');
 const CHATS_PATH = path.join(userDataPath, 'chats.json');
 const MEMORY_PATH = path.join(userDataPath, 'memory.md');
+const SYNC_GIST_ID_PATH = path.join(userDataPath, '.sync-gist-id');
 
 // ── 记忆系统初始化 ──
 function getMemory() {
@@ -91,9 +92,15 @@ function createWindow() {
     show: false,
   });
 
-  mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
+  // 启动闪屏：先显示 splash，加载完成后切换主界面
+  mainWindow.loadFile(path.join(__dirname, 'splash.html'));
 
-  mainWindow.once('ready-to-show', () => { mainWindow.show(); });
+  mainWindow.once('ready-to-show', () => {
+    setTimeout(() => {
+      mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
+      mainWindow.show();
+    }, 800); // 闪屏显示 0.8 秒
+  });
 
   if (process.argv.includes('--dev')) {
     mainWindow.webContents.openDevTools();
@@ -175,6 +182,17 @@ ipcMain.handle('set-menu-language', (_, lang) => {
   return true;
 });
 
+ipcMain.handle('rename-chat', (_, { chatId, title }) => {
+  const chats = loadChats();
+  const chat = chats.find(c => c.id === chatId);
+  if (chat) {
+    chat.title = title;
+    saveChats(chats);
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('chat-renamed', { chatId, title });
+  }
+  return true;
+});
+
 // ── Auto Update ─────────────────────────────────────────────
 let _updateInfo = null;
 let _autoUpdater = null;
@@ -238,9 +256,366 @@ ipcMain.handle('install-update', () => {
   return { installing: true };
 });
 
+// ══════════════════════════════════════════════════════════════
+//  MCP 协议插件系统
+// ══════════════════════════════════════════════════════════════
+
+const MCP_CONFIG_PATH = path.join(require('os').homedir(), '.deepagent', 'mcp.json');
+
+class MCPServer {
+  constructor(name, command, args, env) {
+    this.name = name;
+    this.command = command;
+    this.args = args || [];
+    this.env = env || {};
+    this.tools = [];
+    this.child = null;
+    this.pending = new Map();
+    this._seq = 0;
+    this.started = false;
+    this.error = null;
+  }
+
+  async start() {
+    return new Promise((resolve) => {
+      try {
+        this.child = require('child_process').spawn(this.command, this.args, {
+          stdio: ['pipe', 'pipe', 'pipe'],
+          env: { ...process.env, ...this.env },
+        });
+
+        let buffer = '';
+        this.child.stdout.on('data', (data) => {
+          buffer += data.toString();
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const msg = JSON.parse(line);
+              const pending = this.pending.get(msg.id);
+              if (pending) { clearTimeout(pending.timer); this.pending.delete(msg.id); pending.resolve(msg); }
+            } catch(_) {}
+          }
+        });
+
+        this.child.stderr.on('data', (data) => {
+          if (!this.started) this.error = data.toString().slice(0, 200);
+        });
+
+        this.child.on('error', (err) => { this.error = err.message; this.started = true; resolve(); });
+        this.child.on('exit', () => { this.started = false; });
+
+        // 发送 tools/list 获取工具列表
+        this._request('tools/list', {}).then((msg) => {
+          if (msg && msg.result && msg.result.tools) {
+            this.tools = msg.result.tools;
+          }
+          this.started = true;
+          resolve();
+        }).catch(() => { this.started = true; resolve(); });
+
+        // 超时处理
+        setTimeout(() => { if (!this.started) { this.started = true; resolve(); } }, 5000);
+      } catch (err) {
+        this.error = err.message;
+        this.started = true;
+        resolve();
+      }
+    });
+  }
+
+  async callTool(name, args) {
+    const result = await this._request('tools/call', { name, arguments: args });
+    return result?.result || { error: '无响应' };
+  }
+
+  _request(method, params) {
+    return new Promise((resolve, reject) => {
+      const id = ++this._seq;
+      const msg = JSON.stringify({ jsonrpc: '2.0', method, params, id }) + '\n';
+      const timer = setTimeout(() => { this.pending.delete(id); resolve(null); }, 30000);
+      this.pending.set(id, { resolve, timer });
+      try { this.child.stdin.write(msg); } catch(_) { clearTimeout(timer); this.pending.delete(id); resolve(null); }
+    });
+  }
+
+  stop() {
+    if (this.child) { try { this.child.kill(); } catch(_) {} this.child = null; }
+  }
+}
+
+let mcpServers = [];
+
+async function loadMCPServers() {
+  // 停止旧服务器
+  mcpServers.forEach(s => s.stop());
+  mcpServers = [];
+
+  if (!fs.existsSync(MCP_CONFIG_PATH)) return [];
+  try {
+    const config = JSON.parse(fs.readFileSync(MCP_CONFIG_PATH, 'utf-8'));
+    for (const [name, cfg] of Object.entries(config.servers || {})) {
+      const server = new MCPServer(name, cfg.command, cfg.args || [], cfg.env || {});
+      await server.start();
+      mcpServers.push(server);
+    }
+  } catch (err) {
+    console.error('[MCP] 加载失败:', err.message);
+  }
+  return mcpServers;
+}
+
+function getAllMCPTools() {
+  const tools = [];
+  mcpServers.forEach(server => {
+    server.tools.forEach(t => {
+      tools.push({
+        ...t,
+        _mcpServer: server.name,
+        type: 'function',
+        function: {
+          name: t.name,
+          description: t.description || `${server.name} 提供的外部工具`,
+          parameters: t.inputSchema || { type: 'object', properties: {} },
+        },
+      });
+    });
+  });
+  return tools;
+}
+
+// MCP IPC
+ipcMain.handle('get-mcp-status', () => {
+  return mcpServers.map(s => ({ name: s.name, tools: s.tools.length, started: s.started, error: s.error }));
+});
+
+ipcMain.handle('reload-mcp', async () => {
+  await loadMCPServers();
+  return mcpServers.map(s => ({ name: s.name, tools: s.tools.length, started: s.started, error: s.error }));
+});
+
+ipcMain.handle('toggle-builtin-mcp', async (_, { plugin, enabled }) => {
+  try {
+    const mcpPath = path.join(require('os').homedir(), '.deepagent', 'mcp.json');
+    let config = { servers: {} };
+    if (fs.existsSync(mcpPath)) config = JSON.parse(fs.readFileSync(mcpPath, 'utf-8'));
+
+    if (enabled) {
+      config.servers[plugin] = { command: 'node', args: [path.join(__dirname, 'mcp-plugins', `${plugin}-mcp.js`)] };
+    } else {
+      delete config.servers[plugin];
+    }
+    fs.writeFileSync(mcpPath, JSON.stringify(config, null, 2));
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+//  CODE REVIEW
+// ══════════════════════════════════════════════════════════════
+
+ipcMain.handle('code-review-diff', async (_, { repoPath } = {}) => {
+  try {
+    const cwd = repoPath || process.cwd();
+    const { execSync } = require('child_process');
+    const status = execSync('git status --short', { cwd, encoding: 'utf-8', maxBuffer: 1024 * 1024 }).toString();
+    if (!status.trim()) return { diff: '', status: '无变更' };
+    const diff = execSync('git diff --unified=5', { cwd, encoding: 'utf-8', maxBuffer: 1024 * 1024 }).toString();
+    return { diff: diff || '无变更', status: status.trim(), files: status.split('\n').filter(Boolean).length };
+  } catch (err) {
+    return { error: `Git 操作失败: ${err.message.slice(0, 200)}。请确保在 Git 仓库中执行。` };
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+//  CLOUD SYNC — GitHub Gist
+// ══════════════════════════════════════════════════════════════
+
+function getSyncGistId() {
+  try { return fs.readFileSync(SYNC_GIST_ID_PATH, 'utf-8').trim(); } catch(_) { return ''; }
+}
+function saveSyncGistId(id) { fs.writeFileSync(SYNC_GIST_ID_PATH, id, 'utf-8'); }
+
+function githubApi(token, methodPath, body) {
+  return new Promise((resolve) => {
+    const [method, path] = methodPath.split(' ');
+    const opts = {
+      hostname: 'api.github.com', path, method,
+      headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': 'deepagent', 'Content-Type': 'application/json' },
+    };
+    const req = require('https').request(opts, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => { try { resolve(JSON.parse(data)); } catch(_) { resolve({ _raw: data }); } });
+    });
+    req.on('error', (err) => resolve({ error: err.message }));
+    if (body) req.write(JSON.stringify(body));
+    req.end();
+  });
+}
+
+ipcMain.handle('sync-upload', async () => {
+  try {
+    const config = loadConfig();
+    const token = config.syncToken;
+    if (!token) return { success: false, error: '未配置 Token' };
+
+    const safeConfig = { ...config };
+    delete safeConfig.apiKey; delete safeConfig.syncToken; delete safeConfig.ttsAk; delete safeConfig.ttsSk;
+    delete safeConfig.ttsElevenKey; delete safeConfig.searchApiKey;
+
+    const files = {
+      'chats.json': { content: fs.existsSync(CHATS_PATH) ? fs.readFileSync(CHATS_PATH, 'utf-8') : '[]' },
+      'config.json': { content: JSON.stringify(safeConfig, null, 2) },
+      'memory.md': { content: fs.existsSync(MEMORY_PATH) ? fs.readFileSync(MEMORY_PATH, 'utf-8') : '' },
+    };
+
+    let gistId = getSyncGistId();
+    if (gistId) {
+      const res = await githubApi(token, `PATCH /gists/${gistId}`, { files });
+      if (res.error) return { success: false, error: res.error };
+    } else {
+      const res = await githubApi(token, 'POST /gists', { description: 'DeepAgent Sync', files, public: false });
+      if (res.error) return { success: false, error: res.error };
+      if (res.id) saveSyncGistId(res.id);
+    }
+    return { success: true, time: Date.now() };
+  } catch (err) { return { success: false, error: err.message }; }
+});
+
+ipcMain.handle('sync-download', async () => {
+  try {
+    const config = loadConfig();
+    const token = config.syncToken;
+    if (!token) return { success: false, error: '未配置 Token' };
+
+    let gistId = getSyncGistId();
+    if (!gistId) return { success: false, error: '未找到同步数据，请先上传' };
+
+    const res = await githubApi(token, `GET /gists/${gistId}`);
+    if (res.error) return { success: false, error: res.error };
+
+    const files = res.files || {};
+    if (files['chats.json']?.content) fs.writeFileSync(CHATS_PATH, files['chats.json'].content, 'utf-8');
+    if (files['memory.md']?.content) fs.writeFileSync(MEMORY_PATH, files['memory.md'].content, 'utf-8');
+
+    return { success: true, time: Date.now() };
+  } catch (err) { return { success: false, error: err.message }; }
+});
+
+// ══════════════════════════════════════════════════════════════
+//  RAG 知识库
+// ══════════════════════════════════════════════════════════════
+
+const RAG_PATH = path.join(require('os').homedir(), '.deepagent', 'knowledge');
+if (!fs.existsSync(RAG_PATH)) fs.mkdirSync(RAG_PATH, { recursive: true });
+
+ipcMain.handle('list-knowledge', () => {
+  try {
+    return fs.readdirSync(RAG_PATH).map(f => {
+      const stat = fs.statSync(path.join(RAG_PATH, f));
+      return { id: f, name: f, size: stat.size, date: stat.mtime.toISOString() };
+    }).sort((a, b) => b.date.localeCompare(a.date));
+  } catch (_) { return []; }
+});
+
+ipcMain.handle('upload-knowledge', async (_, filePath) => {
+  try {
+    const srcPath = path.resolve(filePath);
+    const name = path.basename(srcPath);
+    const dest = path.join(RAG_PATH, name);
+    fs.copyFileSync(srcPath, dest);
+    return { success: true, name };
+  } catch (err) { return { error: err.message }; }
+});
+
+ipcMain.handle('delete-knowledge', (_, name) => {
+  try { fs.unlinkSync(path.join(RAG_PATH, name)); return { success: true }; }
+  catch (err) { return { error: err.message }; }
+});
+
+ipcMain.handle('search-knowledge', (_, keyword) => {
+  if (!keyword) return [];
+  const results = [];
+  try {
+    const files = fs.readdirSync(RAG_PATH);
+    for (const file of files) {
+      const fullPath = path.join(RAG_PATH, file);
+      try {
+        const content = fs.readFileSync(fullPath, 'utf-8');
+        const lines = content.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+          if (results.length >= 10) break;
+          if (lines[i].toLowerCase().includes(keyword.toLowerCase())) {
+            results.push({ file, line: i + 1, text: lines[i].trim().slice(0, 200) });
+          }
+        }
+      } catch(_) {}
+      if (results.length >= 10) break;
+    }
+  } catch(_) {}
+  return results;
+});
+
+// ══════════════════════════════════════════════════════════════
+//  WORKSPACE 管理
+// ══════════════════════════════════════════════════════════════
+
+const WORKSPACE_PATH = path.join(require('os').homedir(), '.deepagent', 'workspaces.json');
+
+function loadWorkspaces() {
+  try { return JSON.parse(fs.readFileSync(WORKSPACE_PATH, 'utf-8')); }
+  catch(_) { return { workspaces: [{ name: 'Home', path: require('os').homedir() }], active: 0 }; }
+}
+
+function saveWorkspaces(data) { fs.writeFileSync(WORKSPACE_PATH, JSON.stringify(data, null, 2), 'utf-8'); }
+
+ipcMain.handle('get-workspaces', () => loadWorkspaces());
+
+ipcMain.handle('add-workspace', (_, { name, path: wsPath }) => {
+  const data = loadWorkspaces();
+  data.workspaces.push({ name, path: path.resolve(wsPath) });
+  saveWorkspaces(data);
+  return data;
+});
+
+ipcMain.handle('remove-workspace', (_, idx) => {
+  const data = loadWorkspaces();
+  if (idx >= 0 && idx < data.workspaces.length) {
+    data.workspaces.splice(idx, 1);
+    if (data.active >= data.workspaces.length) data.active = 0;
+    saveWorkspaces(data);
+  }
+  return data;
+});
+
+ipcMain.handle('set-active-workspace', (_, idx) => {
+  const data = loadWorkspaces();
+  if (idx >= 0 && idx < data.workspaces.length) { data.active = idx; saveWorkspaces(data); }
+  return data;
+});
+
+// macOS 菜单适配
+if (process.platform === 'darwin') {
+  try {
+    const macTemplate = [
+      { role: 'appMenu', label: 'DeepAgent' },
+      { role: 'fileMenu' }, { role: 'editMenu' },
+      { role: 'viewMenu' }, { role: 'windowMenu' },
+    ];
+    Menu.setApplicationMenu(Menu.buildFromTemplate(macTemplate));
+  } catch(_) {}
+}
+
 app.whenReady().then(() => {
   initMemory();
   setMenu('zh');
+  initAutoUpdater();
+  loadMCPServers(); // 异步加载 MCP
+  createWindow();
   initAutoUpdater();
   createWindow();
   // 启动后延迟3秒检查更新
@@ -257,6 +632,11 @@ app.on('window-all-closed', () => {
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
+});
+
+app.on('will-quit', () => {
+  mcpServers.forEach(s => s.stop());
+  if (terminalProcess) { terminalProcess.kill(); terminalProcess = null; }
 });
 
 // ── IPC: Config & Chats ─────────────────────────────────────
@@ -452,6 +832,61 @@ const TOOL_DEFINITIONS = [
         type: 'object',
         properties: { content: { type: 'string', description: '完整的记忆文件新内容（包含原有内容+新增内容）' } },
         required: ['content'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_knowledge',
+      description: '在本地知识库中搜索关键词，返回相关的文档片段。知识库包含用户上传的 TXT/MD/PDF/DOCX 文档。',
+      parameters: {
+        type: 'object',
+        properties: { query: { type: 'string', description: '搜索关键词，如"安装步骤"、"配置方法"' } },
+        required: ['query'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'browser_open',
+      description: '在无头浏览器中打开网页，返回页面截图。可用于访问网页、查看登录页面等',
+      parameters: { type: 'object', properties: { url: { type: 'string', description: '网页地址' } }, required: ['url'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'browser_act',
+      description: '在已打开的页面中操作：点击、输入、截图、执行JS等',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['click', 'type', 'screenshot', 'evaluate', 'close'] },
+          selector: { type: 'string', description: 'CSS 选择器（click/type 需要）' },
+          value: { type: 'string', description: '输入的文字（type 需要）' },
+          script: { type: 'string', description: '要执行的 JS 代码（evaluate 需要）' },
+        },
+        required: ['action'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'desktop_act',
+      description: '操作桌面：移动鼠标、点击、键盘输入、截取屏幕。可以控制任何桌面应用。仅 Windows 可用。',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['click', 'doubleclick', 'rightclick', 'type', 'keypress', 'mousemove', 'screenshot'] },
+          x: { type: 'number', description: '屏幕 x 坐标' },
+          y: { type: 'number', description: '屏幕 y 坐标' },
+          text: { type: 'string', description: '要输入的文字' },
+          key: { type: 'string', description: '按下的按键（如 Enter, Escape, Tab）' },
+        },
+        required: ['action'],
       },
     },
   },
@@ -1009,6 +1444,103 @@ const toolHandlers = {
     return downloadWithYtDlp(hasYtDlp === true ? ytDlpPath : 'yt-dlp', url, mediaDir, extract_audio !== false);
   },
 
+  async search_knowledge({ query }) {
+    const results = [];
+    try {
+      if (!fs.existsSync(RAG_PATH)) return { results: [] };
+      const files = fs.readdirSync(RAG_PATH);
+      for (const file of files) {
+        const fullPath = path.join(RAG_PATH, file);
+        try {
+          const content = fs.readFileSync(fullPath, 'utf-8');
+          const lines = content.split('\n');
+          for (let i = 0; i < lines.length; i++) {
+            if (results.length >= 10) break;
+            if (lines[i].toLowerCase().includes(query.toLowerCase())) {
+              results.push({ file, line: i + 1, text: lines[i].trim().slice(0, 300) });
+            }
+          }
+        } catch(_) {}
+      }
+    } catch(_) {}
+    return { results, count: results.length, query };
+  },
+
+  async browser_open({ url }) {
+    try {
+      const { chromium } = require('playwright-core');
+      if (!global._browser) global._browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
+      if (!global._page) global._page = await global._browser.newPage({ viewport: { width: 1280, height: 720 } });
+      await global._page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+      await global._page.waitForTimeout(1000);
+      const screenshot = await global._page.screenshot({ type: 'png', fullPage: false });
+      return { screenshot: screenshot.toString('base64'), url, note: '浏览器已打开，可使用 browser_act 继续操作' };
+    } catch (err) {
+      if (err.code === 'MODULE_NOT_FOUND') return { error: 'Playwright 未安装。请执行: npm install playwright-core && npx playwright install chromium' };
+      return { error: `浏览器操作失败: ${err.message.slice(0, 200)}` };
+    }
+  },
+
+  async browser_act({ action, selector, value, script }) {
+    try {
+      const pw = require('playwright-core');
+      if (!global._page) return { error: '请先使用 browser_open 打开页面' };
+      const page = global._page;
+      switch (action) {
+        case 'click': await page.click(selector, { timeout: 5000 }); break;
+        case 'type': await page.fill(selector, value || ''); break;
+        case 'screenshot': break;
+        case 'evaluate': await page.evaluate(new Function(script || '')); break;
+        case 'close': if (global._browser) { await global._browser.close(); global._browser = null; global._page = null; } return { success: true, note: '浏览器已关闭' };
+        default: return { error: `未知操作: ${action}` };
+      }
+      await page.waitForTimeout(500);
+      const screenshot = await page.screenshot({ type: 'png', fullPage: false });
+      return { screenshot: screenshot.toString('base64'), action, note: '操作已完成' };
+    } catch (err) {
+      if (err.code === 'MODULE_NOT_FOUND') return { error: 'Playwright 未安装。请执行: npm install playwright-core && npx playwright install chromium' };
+      return { error: `${action} 失败: ${err.message.slice(0, 200)}` };
+    }
+  },
+
+  async desktop_act({ action, x, y, text, key }) {
+    try {
+      const { execSync } = require('child_process');
+      const runPs = (cmd) => execSync(`powershell -NoProfile -Command "${cmd.replace(/"/g, '\\"')}"`, { timeout: 10000, encoding: 'utf-8' });
+
+      switch (action) {
+        case 'mousemove':
+          runPs(`Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${x || 0},${y || 0})`);
+          return { success: true, note: `鼠标移动到 (${x}, ${y})` };
+        case 'click':
+          runPs(`Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${x || 0},${y || 0}); [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')`);
+          return { success: true };
+        case 'doubleclick':
+          runPs(`Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${x || 0},${y || 0}); 1..2 | % { [System.Windows.Forms.SendKeys]::SendWait('{ENTER}') }`);
+          return { success: true };
+        case 'rightclick':
+          runPs(`Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${x || 0},${y || 0}); [System.Windows.Forms.SendKeys]::SendWait('+{F10}')`);
+          return { success: true };
+        case 'type':
+          if (text) runPs(`Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${text.replace(/'/g, "''")}')`);
+          return { success: true, note: `输入: ${text}` };
+        case 'keypress':
+          const keyMap = { enter: '{ENTER}', escape: '{ESC}', tab: '{TAB}', backspace: '{BACKSPACE}', delete: '{DELETE}', up: '{UP}', down: '{DOWN}', left: '{LEFT}', right: '{RIGHT}', home: '{HOME}', end: '{END}', space: ' ' };
+          runPs(`Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${keyMap[(key||'').toLowerCase()] || key}')`);
+          return { success: true, note: `按键: ${key}` };
+        case 'screenshot':
+          const psScript = 'Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $bmp = New-Object System.Drawing.Bitmap([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width, [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height); $g = [System.Drawing.Graphics]::FromImage($bmp); $g.CopyFromScreen(0, 0, 0, 0, $bmp.Size); $ms = New-Object System.IO.MemoryStream; $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png); Write-Output ([System.Convert]::ToBase64String($ms.ToArray())); $g.Dispose(); $bmp.Dispose(); $ms.Dispose()';
+          const b64 = execSync(`powershell -NoProfile -Command "${psScript}"`, { timeout: 30000, maxBuffer: 50*1024*1024, encoding: 'utf-8' }).toString().trim();
+          const screenshotLines = b64.split('\n').filter(l => l.length > 100);
+          return { screenshot: screenshotLines[0] || '', note: '屏幕截图完成' };
+        default:
+          return { error: `未知桌面操作: ${action}` };
+      }
+    } catch (err) {
+      return { error: `桌面操作失败: ${err.message.slice(0, 200)}`, note: '桌面自动化仅支持 Windows' };
+    }
+  },
+
   async read_memory() {
     return { content: getMemory(), path: MEMORY_PATH };
   },
@@ -1489,7 +2021,9 @@ async function conversationLoop(event, userMessages, apiKey, model, apiEndpoint,
 
     while (retryCount <= maxRetries) {
       try {
-        const req = buildApiRequest(provider, apiEndpoint, apiKey, model, currentMessages, useTools ? TOOL_DEFINITIONS : null);
+        // 合并内置工具 + MCP 工具
+        const allTools = useTools ? [...TOOL_DEFINITIONS, ...getAllMCPTools()] : null;
+        const req = buildApiRequest(provider, apiEndpoint, apiKey, model, currentMessages, allTools);
         response = await fetch(req.url, { ...req.options, signal: _abortController.signal });
 
         if (response.ok) break;
@@ -1615,7 +2149,15 @@ async function conversationLoop(event, userMessages, apiKey, model, apiEndpoint,
           if (handler) {
             toolResult = await handler(args);
           } else {
-            toolResult = { error: `未知工具: ${tc.name}` };
+            // 尝试 MCP 服务器
+            let mcpResult = null;
+            for (const server of mcpServers) {
+              if (server.tools.some(t => t.name === tc.name)) {
+                mcpResult = await server.callTool(tc.name, args);
+                break;
+              }
+            }
+            toolResult = mcpResult || { error: `未知工具: ${tc.name}` };
           }
         } catch (err) {
           toolResult = { error: `工具执行失败: ${err.message}` };
@@ -1648,14 +2190,15 @@ async function conversationLoop(event, userMessages, apiKey, model, apiEndpoint,
       // 不发送 stream-end，继续下一轮
     } else {
       // 对话完成 - 文本回复或流结束
-      event.sender.send('stream-end');
+      const finishReason = result.finish_reason || (result.type === 'done' ? 'stop' : '');
+      event.sender.send('stream-end', finishReason ? { finishReason } : {});
       return;
     }
   }
 
   // 达到最大轮次
   _abortController = null;
-  event.sender.send('stream-end');
+  event.sender.send('stream-end', { finishReason: 'max_rounds' });
 }
 
 // ── IPC: stream-message 入口 ─────────────────────────────────

@@ -30,7 +30,7 @@ contextBridge.exposeInMainWorld('claudeDesktop', {
   },
   onStreamEnd: (callback) => {
     ipcRenderer.removeAllListeners('stream-end');
-    ipcRenderer.on('stream-end', () => callback());
+    ipcRenderer.on('stream-end', (_event, data) => callback(data));
   },
   onStreamError: (callback) => {
     ipcRenderer.removeAllListeners('stream-error');
@@ -88,6 +88,13 @@ contextBridge.exposeInMainWorld('claudeDesktop', {
     ipcRenderer.on('command-end', () => callback());
   },
 
+  // ── Chat Rename ──
+  renameChat: (data) => ipcRenderer.invoke('rename-chat', data),
+  onChatRenamed: (callback) => {
+    ipcRenderer.removeAllListeners('chat-renamed');
+    ipcRenderer.on('chat-renamed', (_event, data) => callback(data));
+  },
+
   // ── Permission System ──
   respondPermission: (data) => ipcRenderer.invoke('permission-respond', data),
 
@@ -99,9 +106,38 @@ contextBridge.exposeInMainWorld('claudeDesktop', {
   // ── Microphone Recording ──
   transcribeAudioBlob: (buffer) => ipcRenderer.invoke('transcribe-audio-blob', { buffer }),
 
+  // ── Browser & Desktop Automation ──
+  browserOpen: (url) => ipcRenderer.invoke('browser-open', url),
+  browserAct: (params) => ipcRenderer.invoke('browser-act', params),
+  desktopAct: (params) => ipcRenderer.invoke('desktop-act', params),
+
   // ── TTS ──
   ttsSpeak: (params) => ipcRenderer.invoke('tts-speak', params),
   ttsStop: () => ipcRenderer.invoke('tts-stop'),
+
+  // ── RAG Knowledge ──
+  listKnowledge: () => ipcRenderer.invoke('list-knowledge'),
+  uploadKnowledge: (path) => ipcRenderer.invoke('upload-knowledge', path),
+  deleteKnowledge: (name) => ipcRenderer.invoke('delete-knowledge', name),
+  searchKnowledge: (keyword) => ipcRenderer.invoke('search-knowledge', keyword),
+
+  // ── Code Review ──
+  codeReviewDiff: (opts) => ipcRenderer.invoke('code-review-diff', opts),
+
+  // ── Workspace ──
+  getWorkspaces: () => ipcRenderer.invoke('get-workspaces'),
+  addWorkspace: (data) => ipcRenderer.invoke('add-workspace', data),
+  removeWorkspace: (idx) => ipcRenderer.invoke('remove-workspace', idx),
+  setActiveWorkspace: (idx) => ipcRenderer.invoke('set-active-workspace', idx),
+
+  // ── Cloud Sync ──
+  syncUpload: () => ipcRenderer.invoke('sync-upload'),
+  syncDownload: () => ipcRenderer.invoke('sync-download'),
+
+  // ── MCP ──
+  getMCPStatus: () => ipcRenderer.invoke('get-mcp-status'),
+  toggleBuiltinMCP: (data) => ipcRenderer.invoke('toggle-builtin-mcp', data),
+  reloadMCP: () => ipcRenderer.invoke('reload-mcp'),
 
   // ── Dependency Check ──
   checkDependencies: () => ipcRenderer.invoke('check-dependencies'),

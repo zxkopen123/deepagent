@@ -3,22 +3,14 @@ dist/
 out/
 release/
 .cache/
-*.log
-
-# Build output
 *.exe
 *.msi
 *.dmg
-
-# OS
+*.log
 .DS_Store
 Thumbs.db
 desktop.ini
-
-# Editor
 .vscode/
 *.swp
 *.swo
-
-# Electron builder
 electron-builder.yml

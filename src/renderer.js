@@ -80,7 +80,32 @@ const searchProvider = $('#search-provider');
 const searchApiKey = $('#search-api-key');
 const densitySelect = $('#density-select');
 const depCheckBtn = $('#dep-check-btn');
+const ttsProvider = $('#tts-provider');
+const ttsAk = $('#tts-ak');
+const ttsSk = $('#tts-sk');
+const ttsVolcVoice = $('#tts-volc-voice');
+const ttsVolcSpeed = $('#tts-volc-speed');
+const ttsElevenKey = $('#tts-eleven-key');
+const ttsElevenVoice = $('#tts-eleven-voice');
+const ttsElevenSpeed = $('#tts-eleven-speed');
+const ttsTestBtn = $('#tts-test-btn');
+const ttsVolcConfig = $('#tts-volc-config');
+const ttsElevenConfig = $('#tts-eleven-config');
 const depCheckResult = $('#dep-check-result');
+const checkUpdateBtn = $('#check-update-btn');
+const updateOverlay = $('#update-overlay');
+const updateStatusText = $('#update-status-text');
+const updateVersionInfo = $('#update-version-info');
+const updateCurrentVer = $('#update-current-ver');
+const updateNewVer = $('#update-new-ver');
+const updateReleaseNotes = $('#update-release-notes');
+const updateProgressContainer = $('#update-progress-container');
+const updateProgressFill = $('#update-progress-fill');
+const updateProgressText = $('#update-progress-text');
+const updateDownloadBtn = $('#update-download');
+const updateInstallBtn = $('#update-install');
+const updateLaterBtn = $('#update-later');
+const updateCloseBtn = $('#update-close');
 const terminalContainer = $('#terminal-container');
 const terminalStatus = $('#terminal-status');
 const terminalRestartBtn = $('#terminal-restart-btn');
@@ -264,7 +289,6 @@ function renderMessage(msg) {
 
   if (msg.role === 'user') {
     if (msg._imageData) {
-      // 图片消息显示缩略图
       const label = msg._fileName ? escapeHtml(msg._fileName) : '图片';
       content.innerHTML = `<div class="msg-image"><img src="${msg._imageData}" alt="${label}" title="${label}"><p>${label}</p></div>`;
     } else {
@@ -272,6 +296,14 @@ function renderMessage(msg) {
     }
   } else {
     content.innerHTML = renderMarkdown(msg.content);
+    // 添加朗读按钮
+    const playBtn = document.createElement('button');
+    playBtn.className = 'msg-tts-btn';
+    playBtn.textContent = '🔊';
+    playBtn.title = '朗读';
+    playBtn.dataset.msgId = msg.id || '';
+    playBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleTts(msg.id || '', msg.content || ''); });
+    content.appendChild(playBtn);
   }
 
   div.appendChild(avatar);
@@ -1732,6 +1764,105 @@ function updateProviderUI() {
   providerHint.textContent = `当前选择：${providerNames[provider] || provider}。所有密钥仅本地保存，仅用于调用对应API。`;
 }
 
+// ── TTS 朗读 ─────────────────────────────────────────────
+async function toggleTts(msgId, text) {
+  const provider = state.config.ttsProvider || 'off';
+
+  // 停止当前朗读
+  if (_currentTtsMsgId === msgId && _currentAudio) {
+    _currentAudio.pause();
+    _currentAudio = null;
+    _currentTtsMsgId = null;
+    document.querySelectorAll('.msg-tts-btn').forEach(b => b.classList.remove('playing'));
+    return;
+  }
+
+  if (provider === 'off') {
+    showError('请在设置中开启 TTS 并配置密钥');
+    return;
+  }
+
+  if (!text) text = '';
+  const speakText = text.replace(/<[^>]+>/g, '').replace(/```[\s\S]*?```/g, ' ').trim().slice(0, 500);
+  if (!speakText) { showError('没有可朗读的文本'); return; }
+
+  // 检查凭证
+  if (provider === 'volc' && (!state.config.ttsAk || !state.config.ttsSk)) {
+    showError('请在设置中配置火山引擎的 AK 和 SK');
+    return;
+  }
+  if (provider === 'eleven' && !state.config.ttsElevenKey) {
+    showError('请在设置中配置 ElevenLabs API Key');
+    return;
+  }
+
+  document.querySelectorAll('.msg-tts-btn').forEach(b => b.classList.remove('playing'));
+  const btn = document.querySelector(`.msg-tts-btn[data-msg-id="${msgId}"]`);
+  if (btn) btn.classList.add('playing');
+
+  const result = await window.claudeDesktop.ttsSpeak({
+    text: speakText,
+    provider,
+    volcAk: state.config.ttsAk || '',
+    volcSk: state.config.ttsSk || '',
+    volcVoice: state.config.ttsVolcVoice || 'BV001_streaming',
+    volcSpeed: state.config.ttsVolcSpeed || '1.0',
+    elevenKey: state.config.ttsElevenKey || '',
+    elevenVoice: state.config.ttsElevenVoice || '21m00Tcm4TlvDq8ikWAM',
+    elevenSpeed: state.config.ttsElevenSpeed || '1.0',
+  });
+
+  if (result.error) {
+    showError(result.error);
+    if (btn) btn.classList.remove('playing');
+    return;
+  }
+
+  try {
+    const audioData = atob(result.audio);
+    const arrayBuffer = new ArrayBuffer(audioData.length);
+    const view = new Uint8Array(arrayBuffer);
+    for (let i = 0; i < audioData.length; i++) view[i] = audioData.charCodeAt(i);
+    const blob = new Blob([arrayBuffer], { type: 'audio/mp3' });
+    const url = URL.createObjectURL(blob);
+
+    _currentTtsMsgId = msgId;
+    _currentAudio = new Audio(url);
+    _currentAudio.onended = () => {
+      _currentAudio = null;
+      _currentTtsMsgId = null;
+      if (btn) btn.classList.remove('playing');
+      URL.revokeObjectURL(url);
+    };
+    _currentAudio.onerror = () => {
+      showError('音频播放失败');
+      _currentAudio = null;
+      _currentTtsMsgId = null;
+      if (btn) btn.classList.remove('playing');
+    };
+    _currentAudio.play().catch(() => {
+      showError('音频播放失败，请检查浏览器权限');
+      if (btn) btn.classList.remove('playing');
+    });
+  } catch (err) {
+    showError(`音频解码失败: ${err.message}`);
+    if (btn) btn.classList.remove('playing');
+  }
+}
+
+// TTS 提供商切换
+ttsProvider.addEventListener('change', () => {
+  const val = ttsProvider.value;
+  ttsVolcConfig.style.display = val === 'volc' ? 'block' : 'none';
+  ttsElevenConfig.style.display = val === 'eleven' ? 'block' : 'none';
+  state.config.ttsProvider = val;
+});
+
+// TTS 测试按钮
+ttsTestBtn.addEventListener('click', () => {
+  toggleTts('_test_', '你好，欢迎使用 DeepAgent。这是一段测试语音。');
+});
+
 // ── 应用界面语言 ──────────────────────────────────────────
 function applyLanguage() {
   // 更新 data-i18n 元素的文本
@@ -1767,6 +1898,21 @@ async function openSettings() {
   searchProvider.value = state.config.searchProvider || 'html';
   searchApiKey.value = state.config.searchApiKey || '';
   settingsStatus.textContent = '';
+  // TTS 配置
+  if (ttsProvider) {
+    const p = state.config.ttsProvider || 'off';
+    ttsProvider.value = p;
+    ttsVolcConfig.style.display = p === 'volc' ? 'block' : 'none';
+    ttsElevenConfig.style.display = p === 'eleven' ? 'block' : 'none';
+  }
+  if (ttsAk) ttsAk.value = state.config.ttsAk || '';
+  if (ttsSk) ttsSk.value = state.config.ttsSk || '';
+  if (ttsVolcVoice) ttsVolcVoice.value = state.config.ttsVolcVoice || 'BV001_streaming';
+  if (ttsVolcSpeed) ttsVolcSpeed.value = state.config.ttsVolcSpeed || '1.0';
+  if (ttsElevenKey) ttsElevenKey.value = state.config.ttsElevenKey || '';
+  if (ttsElevenVoice) ttsElevenVoice.value = state.config.ttsElevenVoice || '21m00Tcm4TlvDq8ikWAM';
+  if (ttsElevenSpeed) ttsElevenSpeed.value = state.config.ttsElevenSpeed || '1.0';
+
   updateProviderUI();
   applyLanguage();
   switchMainView('settings');
@@ -1797,9 +1943,19 @@ async function saveSettingsHandler() {
 
   setLanguage(lang);
   applyLanguage();
+  // 保存 TTS 配置
+  if (ttsProvider) state.config.ttsProvider = ttsProvider.value;
+  if (ttsAk) state.config.ttsAk = ttsAk.value.trim();
+  if (ttsSk) state.config.ttsSk = ttsSk.value.trim();
+  if (ttsVolcVoice) state.config.ttsVolcVoice = ttsVolcVoice.value;
+  if (ttsVolcSpeed) state.config.ttsVolcSpeed = ttsVolcSpeed.value;
+  if (ttsElevenKey) state.config.ttsElevenKey = ttsElevenKey.value.trim();
+  if (ttsElevenVoice) state.config.ttsElevenVoice = ttsElevenVoice.value;
+  if (ttsElevenSpeed) state.config.ttsElevenSpeed = ttsElevenSpeed.value;
+
   applyTheme(theme);
   window.claudeDesktop.setMenuLanguage(lang);
-  fullRefreshMessages(); // 刷新欢迎页等动态内容
+  fullRefreshMessages();
 
   // Sync model to header if it exists there
   const headerModel = document.getElementById('model-select');
@@ -1825,6 +1981,14 @@ async function saveSettingsHandler() {
     systemPrompt: state.config.systemPrompt,
     searchProvider: state.config.searchProvider,
     searchApiKey: state.config.searchApiKey,
+    ttsProvider: state.config.ttsProvider,
+    ttsAk: state.config.ttsAk,
+    ttsSk: state.config.ttsSk,
+    ttsVolcVoice: state.config.ttsVolcVoice,
+    ttsVolcSpeed: state.config.ttsVolcSpeed,
+    ttsElevenKey: state.config.ttsElevenKey,
+    ttsElevenVoice: state.config.ttsElevenVoice,
+    ttsElevenSpeed: state.config.ttsElevenSpeed,
   });
 
   settingsStatus.textContent = '✅ 设置已保存';
@@ -2083,6 +2247,77 @@ depCheckBtn.addEventListener('click', async () => {
   depCheckBtn.textContent = '检测缺失依赖';
 });
 
+// ── 自动更新 ──
+checkUpdateBtn.addEventListener('click', () => {
+  if (!window.claudeDesktop.checkForUpdates) {
+    updateStatusText.textContent = '更新功能不可用（electron-updater 未安装）';
+    updateOverlay.classList.remove('hidden');
+    return;
+  }
+  updateOverlay.classList.remove('hidden');
+  updateStatusText.textContent = '正在检查更新...';
+  updateVersionInfo.style.display = 'none';
+  updateReleaseNotes.style.display = 'none';
+  updateProgressContainer.style.display = 'none';
+  updateDownloadBtn.style.display = 'none';
+  updateInstallBtn.style.display = 'none';
+  updateLaterBtn.style.display = 'none';
+  window.claudeDesktop.checkForUpdates();
+});
+
+window.claudeDesktop.onUpdateStatus((data) => {
+  const status = data.status;
+  updateStatusText.textContent = '';
+
+  if (status === 'checking') {
+    updateStatusText.textContent = '正在检查更新...';
+  } else if (status === 'available') {
+    updateStatusText.textContent = `发现新版本 ${data.version}`;
+    updateVersionInfo.style.display = 'block';
+    updateCurrentVer.textContent = data.currentVersion;
+    updateNewVer.textContent = data.version;
+    if (data.releaseNotes) {
+      updateReleaseNotes.style.display = 'block';
+      updateReleaseNotes.textContent = data.releaseNotes.slice(0, 2000);
+    }
+    updateDownloadBtn.style.display = 'inline-flex';
+    updateLaterBtn.style.display = 'inline-flex';
+  } else if (status === 'not-available') {
+    updateStatusText.textContent = '已是最新版本';
+    setTimeout(() => updateOverlay.classList.add('hidden'), 2000);
+  } else if (status === 'downloading') {
+    updateStatusText.textContent = `正在下载... ${Math.round(data.percent)}%`;
+    updateProgressContainer.style.display = 'flex';
+    updateProgressFill.style.width = `${data.percent}%`;
+    updateProgressText.textContent = `${Math.round(data.percent)}%`;
+  } else if (status === 'downloaded') {
+    updateStatusText.textContent = '更新已下载，是否重启安装？';
+    updateProgressContainer.style.display = 'none';
+    updateDownloadBtn.style.display = 'none';
+    updateInstallBtn.style.display = 'inline-flex';
+    updateLaterBtn.style.display = 'inline-flex';
+  } else if (status === 'error') {
+    updateStatusText.textContent = `检查更新失败: ${data.message || ''}`;
+    setTimeout(() => updateOverlay.classList.add('hidden'), 3000);
+  }
+});
+
+updateDownloadBtn.addEventListener('click', () => {
+  window.claudeDesktop.downloadUpdate();
+});
+
+updateInstallBtn.addEventListener('click', () => {
+  window.claudeDesktop.installUpdate();
+});
+
+updateLaterBtn.addEventListener('click', () => {
+  updateOverlay.classList.add('hidden');
+});
+
+updateCloseBtn.addEventListener('click', () => {
+  updateOverlay.classList.add('hidden');
+});
+
 // ── 菜单动作 ──
 window.claudeDesktop.onMenuAction((action) => {
   switch (action) {
@@ -2107,6 +2342,8 @@ saveSettings.addEventListener('click', saveSettingsHandler);
 // ── 终端面板控制器（带历史/Ctrl+C/Tab）──
 let termPanelHistory = [];
 let termPanelHistIdx = -1;
+let _currentTtsMsgId = null;
+let _currentAudio = null;
 let termPanelSavedInput = '';
 
 termPanelClear.addEventListener('click', () => {

@@ -237,6 +237,56 @@
               <div id="dep-check-result" class="dep-list"></div>
               <button id="dep-check-btn" class="btn-primary" style="margin-top:8px">检测缺失依赖</button>
             </div>
+            <div class="form-divider"></div>
+            <div class="form-group">
+              <label data-i18n="settings.tts_label">语音朗读 (TTS)</label>
+              <select id="tts-provider" class="form-input" style="margin-bottom:8px">
+                <option value="off" data-i18n="settings.tts_off">关闭</option>
+                <option value="volc" data-i18n="settings.tts_volc">火山引擎</option>
+                <option value="eleven" data-i18n="settings.tts_eleven">ElevenLabs</option>
+              </select>
+
+              <div id="tts-volc-config" style="display:none">
+                <div style="display:flex;gap:8px;margin-bottom:6px">
+                  <input type="text" id="tts-ak" class="form-input" data-i18n-placeholder="settings.tts_ak" placeholder="Access Key ID" style="flex:1">
+                  <input type="password" id="tts-sk" class="form-input" data-i18n-placeholder="settings.tts_sk" placeholder="Secret Access Key" style="flex:1">
+                </div>
+                <div style="display:flex;gap:8px;margin-bottom:6px">
+                  <select id="tts-volc-voice" class="form-input" style="flex:1">
+                    <option value="BV001_streaming">💁 BV001 甜美女声</option>
+                    <option value="BV002_streaming">💁 BV002 温柔女声</option>
+                    <option value="BV003_streaming">💁 BV003 知性女声</option>
+                    <option value="BV004_streaming">👨 BV004 清亮男声</option>
+                  </select>
+                  <input type="number" id="tts-volc-speed" class="form-input" value="1.0" min="0.5" max="2.0" step="0.1" style="width:80px" data-i18n-title="settings.tts_speed">
+                </div>
+              </div>
+
+              <div id="tts-eleven-config" style="display:none">
+                <input type="password" id="tts-eleven-key" class="form-input" data-i18n-placeholder="settings.tts_eleven_key" placeholder="ElevenLabs API Key" style="margin-bottom:6px">
+                <div style="display:flex;gap:8px;margin-bottom:6px">
+                  <select id="tts-eleven-voice" class="form-input" style="flex:1">
+                    <option value="21m00Tcm4TlvDq8ikWAM">Rachel</option>
+                    <option value="AZnzlk1XvdvUepBnz0f3">Adam</option>
+                    <option value="EXAVITQu4vrVxn66xGcV">Bella</option>
+                    <option value="ErXwobaYiN019PkySvjV">Antoni</option>
+                    <option value="MF3mGyEYCl7XYWbV9V6O">Elli</option>
+                    <option value="TxGEqnHWrfWFTfGW9XjX">Josh</option>
+                    <option value="VR6AewLTigWG4xSOGBG">Arnold</option>
+                  </select>
+                  <input type="number" id="tts-eleven-speed" class="form-input" value="1.0" min="0.5" max="2.0" step="0.1" style="width:80px" data-i18n-title="settings.tts_speed">
+                </div>
+              </div>
+
+              <button id="tts-test-btn" class="btn-secondary" style="margin-top:4px"><span data-i18n="settings.tts_test">🔊 测试语音</span></button>
+              <p class="form-hint" id="tts-hint"><span data-i18n="settings.tts_hint">配置密钥后，AI回复旁会出现 🔊 朗读按钮</span></p>
+            </div>
+            <div class="form-divider"></div>
+            <div class="form-group">
+              <label>更新</label>
+              <p class="form-hint">检查 GitHub Releases 是否有新版本</p>
+              <button id="check-update-btn" class="btn-primary" style="margin-top:8px">检查更新</button>
+            </div>
           </div>
           <div class="settings-page-footer">
             <p id="settings-status" class="settings-status"></p>
@@ -267,6 +317,35 @@
     </main>
   </div>
 
+  <!-- ═══ Update Dialog ═══ -->
+  <div id="update-overlay" class="perm-overlay hidden">
+    <div class="perm-dialog" style="width:500px">
+      <div class="perm-header">
+        <span class="perm-icon">📦</span>
+        <span class="perm-title" id="update-title">检查更新</span>
+      </div>
+      <div class="perm-body">
+        <div id="update-status-text" class="update-status-text">正在检查...</div>
+        <div class="update-version-info" id="update-version-info" style="display:none">
+          <span id="update-current-label">当前版本: <strong id="update-current-ver"></strong></span>
+          <span style="margin-left:16px" id="update-new-label">新版本: <strong id="update-new-ver" style="color:var(--accent)"></strong></span>
+        </div>
+        <div id="update-release-notes" class="update-release-notes" style="display:none"></div>
+        <div id="update-progress-container" class="update-progress-container" style="display:none">
+          <div class="update-progress-bar" id="update-progress-bar"><div class="update-progress-fill" id="update-progress-fill"></div></div>
+          <span class="update-progress-text" id="update-progress-text">0%</span>
+        </div>
+      </div>
+      <div class="perm-actions" id="update-actions">
+        <button id="update-later" class="btn-secondary" style="display:none">稍后再说</button>
+        <button id="update-download" class="btn-primary" style="display:none">立即更新</button>
+        <button id="update-install" class="btn-primary" style="display:none">安装并重启</button>
+        <button id="update-close" class="btn-secondary">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Permission Dialog ═══ -->
   <div id="perm-overlay" class="perm-overlay hidden">
     <div class="perm-dialog">
       <div class="perm-header">

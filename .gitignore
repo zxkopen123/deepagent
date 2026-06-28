@@ -1,5 +1,24 @@
 node_modules/
 dist/
 out/
+release/
 .cache/
 *.log
+
+# Build output
+*.exe
+*.msi
+*.dmg
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+*.swp
+*.swo
+
+# Electron builder
+electron-builder.yml

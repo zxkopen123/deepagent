@@ -99,6 +99,19 @@ const translations = {
     'settings.model': '默认模型',
     'settings.api_key_hint': '密钥仅本地保存，仅用于调用对应 API',
 
+    // ── TTS ──
+    'settings.tts_label': '语音朗读 (TTS)',
+    'settings.tts_off': '关闭',
+    'settings.tts_volc': '火山引擎',
+    'settings.tts_eleven': 'ElevenLabs',
+    'settings.tts_ak': 'Access Key ID',
+    'settings.tts_sk': 'Secret Access Key',
+    'settings.tts_volc_voice': '语音角色',
+    'settings.tts_speed': '语速',
+    'settings.tts_eleven_key': 'ElevenLabs API Key',
+    'settings.tts_test': '测试语音',
+    'settings.tts_hint': '配置密钥后，AI回复旁会出现 🔊 朗读按钮',
+
     // ── 权限弹窗 ──
     'perm.title': '权限请求',
     'perm.label': 'AI 想执行以下操作：',
@@ -129,6 +142,22 @@ const translations = {
     // ── Git ──
     'git.no_changes': '没有需要提交的变更',
     'git.no_changes_note': '文件没有修改或已全部提交',
+
+    // ── 更新 ──
+    'update.checking': '正在检查更新...',
+    'update.available': '发现新版本 {0}',
+    'update.not_available': '已是最新版本',
+    'update.downloading': '正在下载... {0}%',
+    'update.downloaded': '更新已下载，是否重启安装？',
+    'update.error': '检查更新失败',
+    'update.unavailable': '更新功能不可用（electron-updater 未安装）',
+    'update.current_version': '当前版本',
+    'update.new_version': '新版本',
+    'update.check_btn': '检查更新',
+    'update.download_btn': '立即更新',
+    'update.install_btn': '安装并重启',
+    'update.later_btn': '稍后再说',
+    'update.close_btn': '关闭',
   },
 
   en: {
@@ -222,6 +251,19 @@ const translations = {
     'settings.model': 'Default Model',
     'settings.api_key_hint': 'Your API key is stored locally and only used to call the API',
 
+    // ── TTS ──
+    'settings.tts_label': 'Text to Speech (TTS)',
+    'settings.tts_off': 'Off',
+    'settings.tts_volc': 'Volcano Engine',
+    'settings.tts_eleven': 'ElevenLabs',
+    'settings.tts_ak': 'Access Key ID',
+    'settings.tts_sk': 'Secret Access Key',
+    'settings.tts_volc_voice': 'Voice',
+    'settings.tts_speed': 'Speed',
+    'settings.tts_eleven_key': 'ElevenLabs API Key',
+    'settings.tts_test': 'Test Voice',
+    'settings.tts_hint': 'Configure the API key to enable 🔊 button on AI replies',
+
     // ── Permission Dialog ──
     'perm.title': 'Permission Request',
     'perm.label': 'AI wants to perform the following operation:',
@@ -252,6 +294,22 @@ const translations = {
     // ── Git ──
     'git.no_changes': 'Nothing to commit',
     'git.no_changes_note': 'No files have been modified or all changes are already committed',
+
+    // ── Update ──
+    'update.checking': 'Checking for updates...',
+    'update.available': 'New version {0} available',
+    'update.not_available': 'Already up to date',
+    'update.downloading': 'Downloading... {0}%',
+    'update.downloaded': 'Update downloaded. Restart to install?',
+    'update.error': 'Update check failed',
+    'update.unavailable': 'Auto update unavailable (electron-updater not installed)',
+    'update.current_version': 'Current version',
+    'update.new_version': 'New version',
+    'update.check_btn': 'Check for Updates',
+    'update.download_btn': 'Update Now',
+    'update.install_btn': 'Install & Restart',
+    'update.later_btn': 'Later',
+    'update.close_btn': 'Close',
   },
 
   ja: {

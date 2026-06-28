@@ -1,7 +1,20 @@
 const { app, BrowserWindow, ipcMain, nativeTheme, Menu, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
 const { exec } = require('child_process');
+
+// 容器/API 模式支持：通过 PORT 环境变量启动 HTTP 服务
+const PORT = process.env.PORT || null;
+if (PORT) {
+  const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ name: 'DeepAgent', version: '1.0.0', status: 'running', port: PORT }));
+  });
+  server.listen(PORT, () => {
+    console.log(`[DeepAgent] API server running on port ${PORT}`);
+  });
+}
 
 let mainWindow;
 
@@ -162,10 +175,80 @@ ipcMain.handle('set-menu-language', (_, lang) => {
   return true;
 });
 
+// ── Auto Update ─────────────────────────────────────────────
+let _updateInfo = null;
+let _autoUpdater = null;
+
+try {
+  _autoUpdater = require('electron-updater').autoUpdater;
+  _autoUpdater.autoDownload = false;
+  _autoUpdater.setFeedURL({ provider: 'github', owner: 'zxkopen123', repo: 'deepagent' });
+} catch (_) { /* electron-updater 未安装，更新功能不可用 */ }
+
+function initAutoUpdater() {
+  if (!_autoUpdater) return;
+
+  _autoUpdater.on('checking-for-update', () => {
+    if (mainWindow && !mainWindow.isDestroyed())
+      mainWindow.webContents.send('update-status', { status: 'checking', message: '正在检查更新...' });
+  });
+
+  _autoUpdater.on('update-available', (info) => {
+    _updateInfo = info;
+    if (mainWindow && !mainWindow.isDestroyed())
+      mainWindow.webContents.send('update-status', { status: 'available', version: info.version, releaseNotes: info.releaseNotes || '', currentVersion: app.getVersion() });
+  });
+
+  _autoUpdater.on('update-not-available', () => {
+    if (mainWindow && !mainWindow.isDestroyed())
+      mainWindow.webContents.send('update-status', { status: 'not-available', message: '已是最新版本' });
+  });
+
+  _autoUpdater.on('download-progress', (progress) => {
+    if (mainWindow && !mainWindow.isDestroyed())
+      mainWindow.webContents.send('update-status', { status: 'downloading', percent: progress.percent, bytesPerSecond: progress.bytesPerSecond, total: progress.total, transferred: progress.transferred });
+  });
+
+  _autoUpdater.on('update-downloaded', (info) => {
+    if (mainWindow && !mainWindow.isDestroyed())
+      mainWindow.webContents.send('update-status', { status: 'downloaded', version: info.version });
+  });
+
+  _autoUpdater.on('error', (err) => {
+    if (mainWindow && !mainWindow.isDestroyed())
+      mainWindow.webContents.send('update-status', { status: 'error', message: err.message });
+  });
+}
+
+ipcMain.handle('check-for-updates', () => {
+  if (!_autoUpdater) return { available: false, error: '更新功能不可用（electron-updater 未安装）' };
+  _autoUpdater.checkForUpdates();
+  return { available: false, checking: true };
+});
+
+ipcMain.handle('download-update', () => {
+  if (!_autoUpdater || !_updateInfo) return { error: '没有可下载的更新' };
+  _autoUpdater.downloadUpdate();
+  return { downloading: true };
+});
+
+ipcMain.handle('install-update', () => {
+  if (!_autoUpdater) return { error: '更新功能不可用' };
+  setImmediate(() => _autoUpdater.quitAndInstall());
+  return { installing: true };
+});
+
 app.whenReady().then(() => {
   initMemory();
   setMenu('zh');
+  initAutoUpdater();
   createWindow();
+  // 启动后延迟3秒检查更新
+  if (_autoUpdater) {
+    setTimeout(() => {
+      try { _autoUpdater.checkForUpdates(); } catch(_) {}
+    }, 3000);
+  }
 });
 
 app.on('window-all-closed', () => {
@@ -1781,6 +1864,49 @@ ipcMain.handle('transcribe-audio-blob', async (event, { buffer }) => {
   } catch (err) {
     try { fs.unlinkSync(tmpFile); } catch(_) {}
     return { error: `转录失败: ${err.message}` };
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+//  TTS — 双提供商（火山引擎 / ElevenLabs）
+// ══════════════════════════════════════════════════════════════
+
+ipcMain.handle('tts-speak', async (event, { text, provider, volcAk, volcSk, volcVoice, volcSpeed, elevenKey, elevenVoice, elevenSpeed }) => {
+  try {
+    if (provider === 'eleven') {
+      // ElevenLabs
+      const voiceId = elevenVoice || '21m00Tcm4TlvDq8ikWAM';
+      const speed = elevenSpeed || 1.0;
+      const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'xi-api-key': elevenKey || '' },
+        body: JSON.stringify({ text, model_id: 'eleven_monolingual_v1', voice_settings: { stability: 0.5, similarity_boost: 0.5, speed: parseFloat(speed) } }),
+      });
+      if (!resp.ok) return { error: `ElevenLabs API 错误 (${resp.status})` };
+      const arrayBuffer = await resp.arrayBuffer();
+      const base64 = Buffer.from(arrayBuffer).toString('base64');
+      return { audio: base64, format: 'mp3' };
+    }
+
+    // 火山引擎（默认）
+    const token = `Bearer;${volcAk || ''};${volcSk || ''}`;
+    const payload = {
+      app: { appid: '0', token, cluster: 'volcano_tts' },
+      user: { uid: 'deepagent' },
+      audio: { voice_type: volcVoice || 'BV001_streaming', encoding: 'mp3', speed_ratio: parseFloat(volcSpeed || '1.0'), volume_ratio: 1.0, pitch_ratio: 1.0 },
+      request: { reqid: Date.now().toString(36), text, text_type: 'plain', operation: 'query' },
+    };
+    const resp = await fetch('https://openspeech.bytedance.com/api/v1/tts', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': token },
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) return { error: `火山引擎 TTS 错误 (${resp.status})` };
+    const data = await resp.json();
+    if (data.code !== 3000) return { error: `TTS 合成失败: ${data.message || data.code}` };
+    return { audio: data.data, format: 'mp3' };
+  } catch (err) {
+    return { error: `TTS 请求失败: ${err.message}` };
   }
 });
 

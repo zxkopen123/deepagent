@@ -99,12 +99,25 @@ contextBridge.exposeInMainWorld('claudeDesktop', {
   // ── Microphone Recording ──
   transcribeAudioBlob: (buffer) => ipcRenderer.invoke('transcribe-audio-blob', { buffer }),
 
+  // ── TTS ──
+  ttsSpeak: (params) => ipcRenderer.invoke('tts-speak', params),
+  ttsStop: () => ipcRenderer.invoke('tts-stop'),
+
   // ── Dependency Check ──
   checkDependencies: () => ipcRenderer.invoke('check-dependencies'),
   installDependency: (name) => ipcRenderer.invoke('install-dependency', name),
   onDepInstallOutput: (callback) => {
     ipcRenderer.removeAllListeners('dep-install-output');
     ipcRenderer.on('dep-install-output', (_event, data) => callback(data));
+  },
+
+  // ── Auto Update ──
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  downloadUpdate: () => ipcRenderer.invoke('download-update'),
+  installUpdate: () => ipcRenderer.invoke('install-update'),
+  onUpdateStatus: (callback) => {
+    ipcRenderer.removeAllListeners('update-status');
+    ipcRenderer.on('update-status', (_event, data) => callback(data));
   },
 
   // ── Menu ──
